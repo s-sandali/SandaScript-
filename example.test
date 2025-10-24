@@ -1,0 +1,18 @@
+config {
+  base_url = "http://localhost:8080";
+}
+
+// Example variables are not supported yet by parser; using literals
+
+test loginTest {
+    GET "http://localhost:8080/api/users";
+    expect status = 200;
+    expect body contains "username";
+}
+
+
+test GetUser {
+  GET "/api/users/42";
+  expect status = 200;
+  expect body contains "\"id\": 42";
+}

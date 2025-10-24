@@ -1,0 +1,105 @@
+{
+  "info": {
+    "name": "TestLang Demo",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Login (POST /api/login)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"{{user}}\",\n  \"password\": \"1234\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/login",
+          "host": [ "{{baseUrl}}" ],
+          "path": [ "api", "login" ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"status is 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"content-type contains json\", function () { pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"json\"); });",
+              "pm.test(\"body contains token\", function () { pm.expect(pm.response.text()).to.include('\"token\"'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get User (GET /api/users/:id)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/users/{{id}}",
+          "host": [ "{{baseUrl}}" ],
+          "path": [ "api", "users", "{{id}}" ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"status is 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"body contains id\", function () { pm.expect(pm.response.text()).to.include(\"\\\"id\\\": \" + pm.variables.get(\"id\")); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Update User (PUT /api/users/:id)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Trace", "value": "abc-{{id}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"role\": \"ADMIN\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/users/{{id}}",
+          "host": [ "{{baseUrl}}" ],
+          "path": [ "api", "users", "{{id}}" ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"status is 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"X-App header equals TestLangDemo\", function () { pm.expect(pm.response.headers.get(\"X-App\")).to.eql(\"TestLangDemo\"); });",
+              "pm.test(\"content-type contains json\", function () { pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"json\"); });",
+              "pm.test(\"body contains updated true\", function () { pm.expect(pm.response.text()).to.include(\"\\\"updated\\\": true\"); });",
+              "pm.test(\"body contains role ADMIN\", function () { pm.expect(pm.response.text()).to.include(\"\\\"role\\\": \\\"ADMIN\\\"\"); });"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "user", "value": "admin" },
+    { "key": "id", "value": "42" }
+  ]
+}
+

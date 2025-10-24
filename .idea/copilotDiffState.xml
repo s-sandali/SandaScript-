@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CopilotDiffPersistence">
+    <option name="pendingDiffs">
+      <map>
+        <entry key="$PROJECT_DIR$/scripts/run-translator.ps1">
+          <value>
+            <PendingDiffInfo>
+              <option name="filePath" value="$PROJECT_DIR$/scripts/run-translator.ps1" />
+              <option name="updatedContent" value="param(&#10;  [Parameter(Mandatory=$true, Position=0)]&#10;  [string]$File&#10;)&#10;&#10;$ErrorActionPreference = 'Stop'&#10;&#10;# Build&#10;mvn -q -DskipTests compile&#10;&#10;# Build classpath for compile scope&#10;mvn -q -DincludeScope=compile dependency:build-classpath -Dmdep.outputFile=cp.txt&#10;$cp = Get-Content cp.txt -Raw&#10;$cp = &quot;$cp;target/classes&quot;&#10;&#10;# Run translator&#10;java -cp &quot;$cp&quot; translator.Translator &quot;$File&quot;&#10;" />
+            </PendingDiffInfo>
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/src/main/java/translator/DebugProbe.java">
+          <value>
+            <PendingDiffInfo>
+              <option name="filePath" value="$PROJECT_DIR$/src/main/java/translator/DebugProbe.java" />
+              <option name="originalContent" value="package translator;&#10;&#10;import java.io.StringReader;&#10;import java_cup.runtime.DefaultSymbolFactory;&#10;import translator.ast.Program;&#10;&#10;public class DebugProbe {&#10;    private static void runCase(String title, String src) {&#10;        System.out.println(&quot;==== &quot; + title + &quot; ====&quot;);&#10;        try {&#10;            Lexer lexer = new Lexer(new StringReader(src));&#10;            Parser parser = new Parser(lexer, new DefaultSymbolFactory());&#10;            Program p = (Program) parser.parse().value;&#10;            System.out.println(&quot;Parsed tests: &quot; + p.tests.size());&#10;            try {&#10;                Validator.validate(p);&#10;                System.out.println(&quot;Validator: OK (no errors)&quot;);&#10;            } catch (ParseException ex) {&#10;                System.out.println(&quot;Validator error: &quot; + ex.getMessage());&#10;            }&#10;        } catch (ParseException ex) {&#10;            System.out.println(&quot;Parse error: &quot; + ex.getMessage());&#10;        } catch (Exception e) {&#10;            e.printStackTrace();&#10;        }&#10;        System.out.println();&#10;    }&#10;&#10;    public static void main(String[] args) throws Exception {&#10;        String src = String.join(&quot;\n&quot;,&#10;            &quot;config { base_url = \&quot;http://localhost:8080\&quot;; };&quot;,&#10;            &quot;test T {&quot;,&#10;            &quot;  GET \&quot;/api/users/$id\&quot;;&quot;,&#10;            &quot;  expect status = 200;&quot;,&#10;            &quot;  expect body contains \&quot;x\&quot;;&quot;,&#10;            &quot;}&quot;);&#10;        Lexer lexer = new Lexer(new StringReader(src));&#10;        Parser parser = new Parser(lexer, new DefaultSymbolFactory());&#10;        Program p = (Program) parser.parse().value;&#10;        System.out.println(&quot;Parsed tests: &quot; + p.tests.size());&#10;        try {&#10;            Validator.validate(p);&#10;            System.out.println(&quot;Validator: OK (no errors)&quot;);&#10;        } catch (ParseException ex) {&#10;            System.out.println(&quot;Validator error: &quot; + ex.getMessage());&#10;        }&#10;&#10;        String case1 = String.join(&quot;\n&quot;,&#10;            &quot;let 2a = \&quot;x\&quot;;&quot;,&#10;            &quot;test T { GET \&quot;/x\&quot;; expect status = 200; expect body contains \&quot;x\&quot;; }&quot;);&#10;        runCase(&quot;invalid let ident&quot;, case1);&#10;&#10;        String case2 = String.join(&quot;\n&quot;,&#10;            &quot;test T { GET \&quot;/x\&quot; expect status = 200; expect body contains \&quot;x\&quot;; }&quot;);&#10;        runCase(&quot;missing semicolon after GET&quot;, case2);&#10;    }&#10;}&#10;" />
+              <option name="updatedContent" value="package translator;" />
+            </PendingDiffInfo>
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+</project>

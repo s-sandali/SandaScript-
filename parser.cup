@@ -1,0 +1,320 @@
+/* parser.cup - CUP grammar for TestLang++ */
+package translator;
+
+import java.util.*;
+import java_cup.runtime.*;
+import translator.ast.*;
+
+/* ------------ Parser Code ------------ */
+parser code {:
+  // Accumulators for config and variables
+  public String baseUrl = null;
+  public Map<String,String> defaultHeaders = new LinkedHashMap<>();
+  public Map<String,String> variables = new LinkedHashMap<>();
+  private Set<String> testNames = new HashSet<>();
+
+  // Track last three scanned token symbols to improve error diagnostics
+  private int tok0 = -1, tok1 = -1, tok2 = -1; // tok2 = last, tok1 = prev, tok0 = prev-prev
+
+  @Override
+  public java_cup.runtime.Symbol scan() throws Exception {
+    java_cup.runtime.Symbol s = super.scan();
+    if (s != null) {
+      tok0 = tok1;
+      tok1 = tok2;
+      tok2 = s.sym;
+    }
+    return s;
+  }
+
+  // Helper exception type (defined in src/main/java/translator/ParseException.java)
+  private ParseException errorAt(Symbol sym, String msg) {
+    int ln = sym != null ? sym.left : -1;
+    int col = sym != null ? sym.right : -1;
+    return new ParseException((ln > 0 ? ("Line " + ln + ": ") : "") + msg);
+  }
+
+  public void report_error(String message, Object info) {
+    Symbol s = (info instanceof Symbol) ? (Symbol) info : null;
+    throw errorAt(s, message);
+  }
+
+  public void report_fatal_error(String message, Object info) throws Exception {
+    report_error(message, info);
+  }
+
+  public void syntax_error(Symbol cur_token) {
+    // Map two specific contexts to the required messages
+    // 1) let NUMBER ... → expected IDENT after 'let'
+    if ((tok1 == sym.LET && cur_token != null && cur_token.sym == sym.NUMBER)
+        || (tok0 == sym.LET && tok1 == sym.NUMBER && cur_token != null && cur_token.sym == sym.IDENT)) {
+      throw errorAt(cur_token, "expected IDENT after 'let'");
+    }
+    // 2) Missing ';' after request before an assertion or block terminator
+    if (cur_token != null) {
+      boolean nextLooksLikeAssertionOrEnd = (cur_token.sym == sym.EXPECT || cur_token.sym == sym.STATUS || cur_token.sym == sym.TEST || cur_token.sym == sym.RBRACE);
+      // Case A: immediately after GET/POST/... path
+      if (tok0 == sym.GET && tok1 == sym.STRING && nextLooksLikeAssertionOrEnd) {
+        throw errorAt(cur_token, "expected ';' after request");
+      }
+      // Case B: we've already seen EXPECT (e.g., GET STRING EXPECT STATUS ...)
+      if (tok0 == sym.STRING && tok1 == sym.EXPECT && (cur_token.sym == sym.STATUS || cur_token.sym == sym.BODY || cur_token.sym == sym.HEADER)) {
+        throw errorAt(cur_token, "expected ';' after request");
+      }
+      // Case C: parser already shifted EXPECT STATUS and sees '='
+      if (tok0 == sym.EXPECT && tok1 == sym.STATUS && cur_token.sym == sym.EQ) {
+        throw errorAt(cur_token, "expected ';' after request");
+      }
+    }
+    throw errorAt(cur_token, "syntax error");
+  }
+:};
+
+/* ------------ Terminals ------------ */
+terminal CONFIG, BASE_URL, HEADER, LET, TEST;
+terminal GET, POST, PUT, DELETE;
+terminal EXPECT, STATUS, BODY, CONTAINS, IN;
+terminal EQ, LBRACE, RBRACE, SEMI, DOTDOT;
+terminal String STRING;
+terminal Integer NUMBER;
+terminal String IDENT;
+
+/* ------------ Nonterminals ------------ */
+non terminal Program program;
+non terminal Object opt_config;
+non terminal Object config_items;
+non terminal Object config_item;
+non terminal Object opt_semi;
+non terminal Object var_decls;
+non terminal List<TestBlock> tests;
+non terminal TestBlock test_block;
+non terminal List<Statement> statements;
+non terminal Statement statement;
+non terminal Statement get_stmt, delete_stmt, post_stmt, put_stmt;
+non terminal Map<String,String> get_block; // headers only
+non terminal Map<String,String> headers_opt;
+non terminal String opt_body;
+non terminal Assertion assertion;
+
+/* ------------ Start Symbol ------------ */
+start with program;
+
+/* ------------ Grammar Rules ------------ */
+program ::= opt_config var_decls tests:a
+      {: RESULT = new Program(baseUrl, defaultHeaders, variables, a); :}
+  ;
+
+opt_config ::= /* empty */
+  | CONFIG LBRACE config_items RBRACE opt_semi
+  ;
+
+opt_semi ::= /* empty */ | SEMI ;
+
+config_items ::= /* empty */
+  | config_items config_item
+  ;
+
+config_item ::= BASE_URL EQ STRING:s SEMI
+      {: baseUrl = s; :}
+  | HEADER STRING:k EQ STRING:v SEMI
+      {: defaultHeaders.put(k, v); :}
+  | error SEMI
+      {: report_error("expected 'base_url' or 'header' in config", null); :}
+  ;
+
+var_decls ::= /* empty */
+  | var_decls LET IDENT:id EQ STRING:s SEMI
+      {:
+         if (variables.containsKey(id)) report_error("duplicate variable '"+id+"'", null);
+         variables.put(id, s);
+       :}
+  | var_decls LET IDENT:id EQ NUMBER:n SEMI
+      {:
+         if (variables.containsKey(id)) report_error("duplicate variable '"+id+"'", null);
+         variables.put(id, Integer.toString(n));
+       :}
+  | var_decls LET NUMBER:n
+      {:
+         report_error("expected IDENT after 'let'", null);
+       :}
+  | var_decls LET error
+      {:
+         report_error("expected IDENT after 'let'", null);
+       :}
+  ;
+
+tests ::= test_block:a
+      {:
+         List<TestBlock> list = new ArrayList<>();
+         if (testNames.contains(a.name)) report_error("Duplicate test '"+a.name+"'", null);
+         testNames.add(a.name);
+         list.add(a);
+         RESULT = list;
+       :}
+  | tests:l test_block:a
+      {:
+         if (testNames.contains(a.name)) report_error("Duplicate test '"+a.name+"'", null);
+         testNames.add(a.name);
+         l.add(a);
+         RESULT = l;
+       :}
+  ;
+
+test_block ::= TEST IDENT:n LBRACE statements:l RBRACE
+      {:
+         int req=0, asrt=0;
+         for (Statement s : l) {
+           if (s != null && ("GET".equals(s.type) || "POST".equals(s.type) || "PUT".equals(s.type) || "DELETE".equals(s.type))) req++;
+           else if (s instanceof Assertion) asrt++;
+         }
+         if (req < 1 || asrt < 2) report_error("Test '"+n+"' must contain at least 1 request and at least 2 assertions", null);
+         RESULT = new TestBlock(n, l);
+       :}
+  ;
+
+statements ::= statement:s
+      {:
+         List<Statement> list = new ArrayList<>();
+         list.add(s);
+         RESULT = list;
+       :}
+  | statements:l statement:s
+      {:
+         l.add(s);
+         RESULT = l;
+       :}
+  ;
+
+statement ::= GET STRING EXPECT {: report_error("expected ';' after request", null); :}
+            | get_stmt:s {: RESULT = s; :}
+            | delete_stmt:s {: RESULT = s; :}
+            | post_stmt:s {: RESULT = s; :}
+            | put_stmt:s {: RESULT = s; :}
+            | assertion:a {: RESULT = a; :}
+  ;
+
+/* -------- Requests -------- */
+get_stmt ::= GET STRING:u SEMI
+      {:
+         RESULT = new Statement("GET", u, null, new LinkedHashMap<String,String>());
+       :}
+  | GET STRING:u LBRACE get_block:h RBRACE SEMI
+      {:
+         RESULT = new Statement("GET", u, null, h);
+       :}
+  | GET STRING:u error
+      {:
+         report_error("expected ';' after request", null);
+       :}
+  ;
+
+get_block ::= /* empty */
+      {:
+         RESULT = new LinkedHashMap<String,String>();
+       :}
+  | get_block:hm HEADER STRING:k EQ STRING:v SEMI
+      {:
+         hm.put(k, v);
+         RESULT = hm;
+       :}
+  | get_block:hm BODY error
+      {:
+         report_error("only 'header' allowed in request block for GET", null);
+       :}
+  ;
+
+delete_stmt ::= DELETE STRING:u SEMI
+      {:
+         RESULT = new Statement("DELETE", u, null, new LinkedHashMap<String,String>());
+       :}
+  | DELETE STRING:u LBRACE get_block:h RBRACE SEMI
+      {:
+         RESULT = new Statement("DELETE", u, null, h);
+       :}
+  | DELETE STRING:u error
+      {:
+         report_error("expected ';' after request", null);
+       :}
+  ;
+
+post_stmt ::= POST STRING:u SEMI
+      {:
+         RESULT = new Statement("POST", u, null, new LinkedHashMap<String,String>());
+       :}
+  | POST STRING:u LBRACE headers_opt:h opt_body:b RBRACE SEMI
+      {:
+         Statement st = new Statement("POST", u, b, h);
+         RESULT = st;
+       :}
+  | POST STRING:u error
+      {:
+         report_error("expected ';' after request", null);
+       :}
+  ;
+
+put_stmt ::= PUT STRING:u SEMI
+      {:
+         RESULT = new Statement("PUT", u, null, new LinkedHashMap<String,String>());
+       :}
+  | PUT STRING:u LBRACE headers_opt:h opt_body:b RBRACE SEMI
+      {:
+         Statement st = new Statement("PUT", u, b, h);
+         RESULT = st;
+       :}
+  | PUT STRING:u error
+      {:
+         report_error("expected ';' after request", null);
+       :}
+  ;
+
+headers_opt ::= /* empty */
+      {:
+         RESULT = new LinkedHashMap<String,String>();
+       :}
+  | headers_opt:hm HEADER STRING:k EQ STRING:v SEMI
+      {:
+         hm.put(k, v);
+         RESULT = hm;
+       :}
+  ;
+
+opt_body ::= /* empty */
+      {:
+         RESULT = null;
+       :}
+  | opt_body:ob BODY EQ STRING:s SEMI
+      {:
+         RESULT = s;
+       :}
+  | opt_body:ob BODY EQ NUMBER:n SEMI
+      {:
+         report_error("expected STRING after 'body ='", null);
+       :}
+  ;
+
+/* -------- Assertions -------- */
+assertion ::= EXPECT STATUS EQ NUMBER:n SEMI
+      {:
+         RESULT = new Assertion("status_eq", Integer.toString(n));
+       :}
+  | EXPECT STATUS IN NUMBER:lo DOTDOT NUMBER:hi SEMI
+      {:
+         RESULT = Assertion.statusIn(lo, hi);
+       :}
+  | EXPECT STATUS EQ STRING:s SEMI
+      {:
+         report_error("expected NUMBER for status", null);
+       :}
+  | EXPECT BODY CONTAINS STRING:s SEMI
+      {:
+         RESULT = new Assertion("body_contains", s);
+       :}
+  | EXPECT HEADER STRING:k EQ STRING:v SEMI
+      {:
+         RESULT = Assertion.headerEq(k, v);
+       :}
+  | EXPECT HEADER STRING:k CONTAINS STRING:s SEMI
+      {:
+         RESULT = Assertion.headerContains(k, s);
+       :}
+  ;

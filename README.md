@@ -1,4 +1,4 @@
-# TestLang++
+# SandaScript++
 
 > A Domain-Specific Language for HTTP API Testing
 
@@ -25,7 +25,7 @@
 
 ## Introduction
 
-**TestLang++** is a custom Domain-Specific Language (DSL) designed to simplify the process of writing and running HTTP API tests. Instead of manually writing JUnit code, you can describe REST API tests (GET, POST, DELETE, PUT) in an easy-to-read `.test` file. The translator reads the `.test` file and generates runnable JUnit 5 test code (`GeneratedTests.java`) that sends real HTTP requests to a backend server and verifies responses including status codes and body contents.
+**SandaScript++** is a custom Domain-Specific Language (DSL) designed to simplify the process of writing and running HTTP API tests. Instead of manually writing JUnit code, you can describe REST API tests (GET, POST, DELETE, PUT) in an easy-to-read `.test` file. The translator reads the `.test` file and generates runnable JUnit 5 test code (`GeneratedTests.java`) that sends real HTTP requests to a backend server and verifies responses including status codes and body contents.
 
 ---
 
@@ -109,7 +109,7 @@ This compiles your JFlex and CUP sources to build the translator.
 
 ### DSL Syntax
 
-TestLang++ supports the following constructs:
+SandaScript++ supports the following constructs:
 
 #### Configuration Block
 
